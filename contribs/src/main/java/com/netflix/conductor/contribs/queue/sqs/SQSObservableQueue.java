@@ -37,6 +37,7 @@ import com.amazonaws.services.sqs.model.SendMessageBatchRequestEntry;
 import com.amazonaws.services.sqs.model.SendMessageBatchResult;
 import com.amazonaws.services.sqs.model.SetQueueAttributesResult;
 import com.google.common.annotations.VisibleForTesting;
+import com.netflix.conductor.core.LifecycleAwareComponent;
 import com.netflix.conductor.core.events.queue.Message;
 import com.netflix.conductor.core.events.queue.ObservableQueue;
 import com.netflix.conductor.metrics.Monitors;
@@ -56,7 +57,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-public class SQSObservableQueue implements ObservableQueue {
+public class SQSObservableQueue extends LifecycleAwareComponent implements ObservableQueue {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SQSObservableQueue.class);
     private static final String QUEUE_TYPE = "sqs";
@@ -68,7 +69,6 @@ public class SQSObservableQueue implements ObservableQueue {
     private final long pollTimeInMS;
     private final String queueURL;
     private final Scheduler scheduler;
-    private final AtomicBoolean running = new AtomicBoolean();
 
     private SQSObservableQueue(String queueName, AmazonSQSClient client, int visibilityTimeoutInSeconds, int batchSize,
         long pollTimeInMS, List<String> accountsToAuthorize, Scheduler scheduler) {
@@ -143,21 +143,6 @@ public class SQSObservableQueue implements ObservableQueue {
 
     public int getVisibilityTimeoutInSeconds() {
         return visibilityTimeoutInSeconds;
-    }
-
-    @Override
-    public void start() {
-        running.set(true);
-    }
-
-    @Override
-    public void stop() {
-        running.set(false);
-    }
-
-    @Override
-    public boolean isRunning() {
-        return running.get();
     }
 
     public static class Builder {
@@ -314,7 +299,7 @@ public class SQSObservableQueue implements ObservableQueue {
             Observable<Long> interval = Observable.interval(pollTimeInMS, TimeUnit.MILLISECONDS);
             interval.flatMap((Long x) -> {
                 if (!isRunning()) {
-                    LOGGER.debug("Instance disabled, skip listening for messages from SQS");
+                    LOGGER.debug("Component stopped, skip listening for messages from SQS");
                     return Observable.from(Collections.emptyList());
                 }
                 List<Message> messages = receiveMessages();
